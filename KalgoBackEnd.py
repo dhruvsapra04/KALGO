@@ -11,7 +11,7 @@ BASE_URL = 'https://paper-api.alpaca.markets'
 
 # ==== MySQL Database Credentials ====
 MYSQL_USER = 'root'
-MYSQL_PASSWORD = 'your_password'
+MYSQL_PASSWORD = ''
 MYSQL_HOST = 'localhost'
 MYSQL_DB = 'stock_db'
 
@@ -142,6 +142,34 @@ def check_bollinger_signal(symbol, cursor, is_held=False):
         print(f"🔻 Buy signal for {symbol} (Price hit lower band)")
     elif current_price > upper and is_held:
         print(f"🔺 Sell signal for {symbol} (Price hit upper band)")
+
+# ==== Check for Stop Loss Trigger ====
+def check_stop_loss(symbol, cursor, entry_price, stop_loss_percent=5.0):
+    """
+    This function checks if the current price of a stock has fallen
+    below the defined stop loss percentage of the entry price.
+    If it has, it'll print an alert.
+    """
+    # Get the most recent price from the database
+    cursor.execute("""
+        SELECT price 
+        FROM stock_prices 
+        WHERE symbol = %s 
+        ORDER BY timestamp DESC 
+        LIMIT 1
+    """, (symbol,))
+    result = cursor.fetchone()
+    if not result:
+        # No data found for this symbol
+        return
+
+    current_price = result[0]
+    stop_loss_price = entry_price * (1 - stop_loss_percent / 100)
+
+    # Compare the current price with the calculated stop loss price
+    if current_price <= stop_loss_price:
+        print(f"⚠️ Stop loss triggered for {symbol}! Current: ${current_price:.2f}, Entry: ${entry_price:.2f}, Stop loss limit: ${stop_loss_price:.2f}")
+
 
 # ==== Run Bollinger Signal Checks ====
 for ticker in tickers:
