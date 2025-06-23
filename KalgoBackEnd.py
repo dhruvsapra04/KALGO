@@ -1,13 +1,12 @@
 import pandas as pd
 import numpy as np
+import requests
+import time
 from sqlalchemy import create_engine
-from alpaca_trade_api.rest import REST
 import mysql.connector
 
-# ==== Alpaca API Credentials ====
-ALPACA_API_KEY = 'Aplaca key'
-ALPACA_SECRET_KEY = 'Our alpaca key'
-BASE_URL = 'https://paper-api.alpaca.markets'
+# ==== Polygon API Key ====
+POLYGON_API_KEY = 'Bvc2OpzVeWsfR_L5hORh5daSpdk9_0PE'
 
 # ==== MySQL Database Credentials ====
 MYSQL_USER = 'root'
@@ -24,30 +23,36 @@ tickers = [
     'QCOM', 'AVGO', 'AMD', 'UPS', 'SBUX', 'GE', 'CAT', 'GS', 'MS', 'BA'
 ]
 
-# ==== Connect to Alpaca ====
-api = REST(ALPACA_API_KEY, ALPACA_SECRET_KEY, BASE_URL)
+# ==== Fetch Latest Trades using Polygon ====
+def get_latest_polygon_trade(symbol):
+    url = f"https://api.polygon.io/v2/last/trade/{symbol}?apiKey={POLYGON_API_KEY}"
+    response = requests.get(url)
+    if response.status_code == 200:
+        data = response.json()
+        return {
+            'symbol': symbol,
+            'price': data['trade']['p'],
+            'timestamp': pd.to_datetime(data['trade']['t'], unit='ms')
+        }
+    else:
+        print(f"Error fetching {symbol}: {response.status_code}")
+        return None
 
-# ==== Fetch Latest Trades ====
-trades = api.get_latest_trade_many(tickers)
-
-# ==== Format the Data ====
+# ==== Collect Data ====
 data = []
-for symbol, trade in trades.items():
-    data.append({
-        'symbol': symbol,
-        'price': trade.price,
-        'timestamp': trade.timestamp
-    })
+for symbol in tickers:
+    trade = get_latest_polygon_trade(symbol)
+    if trade:
+        data.append(trade)
+    time.sleep(0.25)  # stay under Polygon's free tier rate limits
 
 df = pd.DataFrame(data)
 
 # ==== Save Data to MySQL ====
 engine = create_engine(f'mysql+pymysql://{MYSQL_USER}:{MYSQL_PASSWORD}@{MYSQL_HOST}/{MYSQL_DB}')
 
-# 1. Save to 'live_stock_prices'
+# Save to live_stock_prices and stock_prices
 df.to_sql('live_stock_prices', con=engine, if_exists='append', index=False)
-
-# 2. Save to 'stock_prices', keeping 7800 entries per ticker max
 df.to_sql('stock_prices', con=engine, if_exists='append', index=False)
 
 # Trim stock_prices to keep only the latest 7800 entries per ticker
@@ -67,7 +72,7 @@ with engine.begin() as conn:
             );
         """)
 
-# 3. Compute and store the 20-day SMA in 'sma_20d'
+# ==== Compute and Store 20-day SMA ====
 for symbol in tickers:
     result = engine.execute(f"""
         SELECT price FROM stock_prices
@@ -85,7 +90,7 @@ for symbol in tickers:
             ON DUPLICATE KEY UPDATE sma = {sma_20d};
         """)
 
-# ==== Connect using mysql-connector for analysis ====
+# ==== Connect for Analysis ====
 conn = mysql.connector.connect(
     host=MYSQL_HOST,
     user=MYSQL_USER,
@@ -94,38 +99,37 @@ conn = mysql.connector.connect(
 )
 cursor = conn.cursor()
 
-# ==== Bollinger Bands Calculation ====
+# ==== Bollinger Bands ====
 def get_bollinger_bands(symbol, cursor):
-    query = '''
+    cursor.execute("""
         SELECT price
         FROM stock_prices
         WHERE symbol = %s
         ORDER BY timestamp DESC
         LIMIT 7800
-    '''
-    cursor.execute(query, (symbol,))
+    """, (symbol,))
     rows = cursor.fetchall()
     prices = [row[0] for row in rows]
 
     if len(prices) < 7800:
         return None
 
-    prices.reverse()  # Oldest to newest
+    prices.reverse()
     sma = np.mean(prices)
     std = np.std(prices)
     upper = sma + 2 * std
     lower = sma - 2 * std
     return sma, upper, lower
 
-# ==== Check for Bollinger Signal ====
+# ==== Bollinger Band Signal ====
 def check_bollinger_signal(symbol, cursor, is_held=False):
-    cursor.execute('''
+    cursor.execute("""
         SELECT price
         FROM stock_prices
         WHERE symbol = %s
         ORDER BY timestamp DESC
         LIMIT 1
-    ''', (symbol,))
+    """, (symbol,))
     row = cursor.fetchone()
     if not row:
         return
@@ -139,18 +143,12 @@ def check_bollinger_signal(symbol, cursor, is_held=False):
     print(f"{symbol}: Price={current_price:.2f}, SMA={sma:.2f}, Upper={upper:.2f}, Lower={lower:.2f}")
 
     if current_price < lower and not is_held:
-        print(f"🔻 Buy signal for {symbol} (Price hit lower band)")
+        print(f"🔻 Buy signal for {symbol} (Price below lower band)")
     elif current_price > upper and is_held:
-        print(f"🔺 Sell signal for {symbol} (Price hit upper band)")
+        print(f"🔺 Sell signal for {symbol} (Price above upper band)")
 
-# ==== Check for Stop Loss Trigger ====
+# ==== Stop Loss Trigger ====
 def check_stop_loss(symbol, cursor, entry_price, stop_loss_percent=5.0):
-    """
-    This function checks if the current price of a stock has fallen
-    below the defined stop loss percentage of the entry price.
-    If it has, it'll print an alert.
-    """
-    # Get the most recent price from the database
     cursor.execute("""
         SELECT price 
         FROM stock_prices 
@@ -160,20 +158,18 @@ def check_stop_loss(symbol, cursor, entry_price, stop_loss_percent=5.0):
     """, (symbol,))
     result = cursor.fetchone()
     if not result:
-        # No data found for this symbol
         return
 
     current_price = result[0]
     stop_loss_price = entry_price * (1 - stop_loss_percent / 100)
 
-    # Compare the current price with the calculated stop loss price
     if current_price <= stop_loss_price:
-        print(f"⚠️ Stop loss triggered for {symbol}! Current: ${current_price:.2f}, Entry: ${entry_price:.2f}, Stop loss limit: ${stop_loss_price:.2f}")
+        print(f"⚠️ Stop loss triggered for {symbol}! Current: ${current_price:.2f}, Entry: ${entry_price:.2f}, Limit: ${stop_loss_price:.2f}")
 
-
-# ==== Run Bollinger Signal Checks ====
+# ==== Run Checks ====
 for ticker in tickers:
     check_bollinger_signal(ticker, cursor)
+    # kush an Example for us could be: check_stop_loss(ticker, cursor, entry_price=150.00)
 
 # ==== Cleanup ====
 cursor.close()
