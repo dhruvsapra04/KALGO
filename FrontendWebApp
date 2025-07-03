@@ -28,7 +28,7 @@ function StockAlgo() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    axios.get("http://localhost:5000/api/stocks") // Replace with your backend endpoint
+    axios.get("http://localhost:5000/api/stocks") // Replace with our backend endpoint?
       .then(res => {
         setStocks(res.data);
         setLoading(false);
