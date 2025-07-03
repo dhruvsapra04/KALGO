@@ -1,5 +1,8 @@
+// Kalgo Frontend - Basic Web App (React + Tailwind) with User Auth
+// src/App.jsx
+
 import React, { useEffect, useState } from 'react';
-import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 
 function getStatus(price, sma, upper, lower) {
@@ -13,11 +16,96 @@ function Home() {
     <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-blue-100 to-white text-center">
       <h1 className="text-5xl font-bold mb-6 text-blue-900">Welcome to Kalgo</h1>
       <p className="mb-6 text-lg text-gray-700">Your stock analysis assistant using real-time market data.</p>
-      <Link to="/stocks">
+      <Link to="/login">
         <button className="px-6 py-3 bg-blue-600 text-white font-semibold rounded-xl shadow hover:bg-blue-700">
-          Try Stock Algo
+          Login to Continue
         </button>
       </Link>
+    </div>
+  );
+}
+
+function Login() {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const navigate = useNavigate();
+
+  const handleLogin = async () => {
+    try {
+      const res = await axios.post("http://localhost:5000/api/login", { email, password });
+      localStorage.setItem("token", res.data.token);
+      navigate("/stocks");
+    } catch (err) {
+      alert("Login failed. Please check your credentials.");
+    }
+  };
+
+  return (
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100">
+      <div className="bg-white p-6 rounded-xl shadow-md w-full max-w-md">
+        <h2 className="text-2xl font-bold mb-4">Login</h2>
+        <input
+          className="w-full p-2 mb-4 border rounded"
+          type="email"
+          placeholder="Email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+        />
+        <input
+          className="w-full p-2 mb-4 border rounded"
+          type="password"
+          placeholder="Password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+        />
+        <button onClick={handleLogin} className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700">
+          Login
+        </button>
+        <p className="mt-4 text-sm">
+          Don’t have an account? <Link to="/register" className="text-blue-600">Register</Link>
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function Register() {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const navigate = useNavigate();
+
+  const handleRegister = async () => {
+    try {
+      await axios.post("http://localhost:5000/api/register", { email, password });
+      alert("Registration successful! Please log in.");
+      navigate("/login");
+    } catch (err) {
+      alert("Registration failed. Try a different email.");
+    }
+  };
+
+  return (
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100">
+      <div className="bg-white p-6 rounded-xl shadow-md w-full max-w-md">
+        <h2 className="text-2xl font-bold mb-4">Register</h2>
+        <input
+          className="w-full p-2 mb-4 border rounded"
+          type="email"
+          placeholder="Email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+        />
+        <input
+          className="w-full p-2 mb-4 border rounded"
+          type="password"
+          placeholder="Password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+        />
+        <button onClick={handleRegister} className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700">
+          Register
+        </button>
+      </div>
     </div>
   );
 }
@@ -28,7 +116,12 @@ function StockAlgo() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    axios.get("http://localhost:5000/api/stocks") // Replace with our backend endpoint?
+    const token = localStorage.getItem("token");
+    if (!token) return;
+
+    axios.get("http://localhost:5000/api/stocks", {
+      headers: { Authorization: `Bearer ${token}` },
+    })
       .then(res => {
         setStocks(res.data);
         setLoading(false);
@@ -92,6 +185,8 @@ export default function App() {
     <Router>
       <Routes>
         <Route path="/" element={<Home />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
         <Route path="/stocks" element={<StockAlgo />} />
       </Routes>
     </Router>
