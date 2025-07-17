@@ -1,8 +1,14 @@
-// Kalgo Frontend - Basic Web App (React + Tailwind) with User Auth
+// Kalgo Frontend - Enhanced Web App (React + Tailwind)
 // src/App.jsx
 
 import React, { useEffect, useState } from 'react';
-import { BrowserRouter as Router, Routes, Route, Link, useNavigate } from 'react-router-dom';
+import {
+  BrowserRouter as Router,
+  Routes,
+  Route,
+  Link,
+  useNavigate,
+} from 'react-router-dom';
 import axios from 'axios';
 
 function getStatus(price, sma, upper, lower) {
@@ -11,6 +17,7 @@ function getStatus(price, sma, upper, lower) {
   return 'Hold';
 }
 
+// Home Page
 function Home() {
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-blue-100 to-white text-center">
@@ -25,18 +32,28 @@ function Home() {
   );
 }
 
+// Login Page
 function Login() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (localStorage.getItem('token')) {
+      navigate('/stocks');
+    }
+  }, []);
 
   const handleLogin = async () => {
     try {
-      const res = await axios.post("http://localhost:5000/api/login", { email, password });
-      localStorage.setItem("token", res.data.token);
-      navigate("/stocks");
+      const res = await axios.post('http://localhost:5000/api/login', {
+        email,
+        password,
+      });
+      localStorage.setItem('token', res.data.token);
+      navigate('/stocks');
     } catch (err) {
-      alert("Login failed. Please check your credentials.");
+      alert('Login failed. Please check your credentials.');
     }
   };
 
@@ -58,7 +75,10 @@ function Login() {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
         />
-        <button onClick={handleLogin} className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700">
+        <button
+          onClick={handleLogin}
+          className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
+        >
           Login
         </button>
         <p className="mt-4 text-sm">
@@ -69,18 +89,28 @@ function Login() {
   );
 }
 
+// Register Page
 function Register() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (localStorage.getItem('token')) {
+      navigate('/stocks');
+    }
+  }, []);
 
   const handleRegister = async () => {
     try {
-      await axios.post("http://localhost:5000/api/register", { email, password });
-      alert("Registration successful! Please log in.");
-      navigate("/login");
+      await axios.post('http://localhost:5000/api/register', {
+        email,
+        password,
+      });
+      alert('Registration successful! Please log in.');
+      navigate('/login');
     } catch (err) {
-      alert("Registration failed. Try a different email.");
+      alert('Registration failed. Try a different email.');
     }
   };
 
@@ -102,7 +132,10 @@ function Register() {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
         />
-        <button onClick={handleRegister} className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700">
+        <button
+          onClick={handleRegister}
+          className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
+        >
           Register
         </button>
       </div>
@@ -110,23 +143,33 @@ function Register() {
   );
 }
 
+// Stocks Page (Protected)
 function StockAlgo() {
   const [stocks, setStocks] = useState([]);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (!token) return;
+    const token = localStorage.getItem('token');
+    if (!token) {
+      navigate('/login');
+      return;
+    }
 
-    axios.get("http://localhost:5000/api/stocks", {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then(res => {
+    axios
+      .get('http://localhost:5000/api/stocks', {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      .then((res) => {
         setStocks(res.data);
         setLoading(false);
       })
-      .catch(err => console.error(err));
+      .catch((err) => {
+        console.error(err);
+        localStorage.removeItem('token');
+        navigate('/login');
+      });
   }, []);
 
   const filtered = stocks.filter((s) =>
@@ -135,7 +178,18 @@ function StockAlgo() {
 
   return (
     <div className="min-h-screen bg-gray-100 p-6">
-      <h2 className="text-3xl font-bold mb-4 text-center">📈 Live Stock Analysis</h2>
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-3xl font-bold">📈 Live Stock Analysis</h2>
+        <button
+          onClick={() => {
+            localStorage.removeItem('token');
+            navigate('/login');
+          }}
+          className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600"
+        >
+          Logout
+        </button>
+      </div>
       <input
         type="text"
         className="w-full max-w-md mx-auto mb-6 p-2 border rounded-md"
@@ -160,18 +214,29 @@ function StockAlgo() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((stock) => (
-                <tr key={stock.symbol} className="border-t">
-                  <td className="p-3 font-semibold">{stock.symbol}</td>
-                  <td className="p-3">${stock.price.toFixed(2)}</td>
-                  <td className="p-3">${stock.sma.toFixed(2)}</td>
-                  <td className="p-3">${stock.upper.toFixed(2)}</td>
-                  <td className="p-3">${stock.lower.toFixed(2)}</td>
-                  <td className="p-3 font-medium text-blue-600">
-                    {getStatus(stock.price, stock.sma, stock.upper, stock.lower)}
-                  </td>
-                </tr>
-              ))}
+              {filtered.map((stock) => {
+                const signal = getStatus(stock.price, stock.sma, stock.upper, stock.lower);
+                const color =
+                  signal === 'Buy'
+                    ? 'bg-green-500'
+                    : signal === 'Sell'
+                    ? 'bg-red-500'
+                    : 'bg-yellow-400';
+                return (
+                  <tr key={stock.symbol} className="border-t">
+                    <td className="p-3 font-semibold">{stock.symbol}</td>
+                    <td className="p-3">${stock.price.toFixed(2)}</td>
+                    <td className="p-3">${stock.sma.toFixed(2)}</td>
+                    <td className="p-3">${stock.upper.toFixed(2)}</td>
+                    <td className="p-3">${stock.lower.toFixed(2)}</td>
+                    <td className="p-3">
+                      <span className={`px-3 py-1 text-white rounded-full ${color}`}>
+                        {signal}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -180,6 +245,7 @@ function StockAlgo() {
   );
 }
 
+// Main App
 export default function App() {
   return (
     <Router>
