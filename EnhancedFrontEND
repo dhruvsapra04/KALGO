@@ -1,0 +1,213 @@
+// Kalgo Frontend - Enhanced Web App (React + Tailwind) with User Auth + Features
+// src/App.jsx
+
+import React, { useEffect, useState, useContext, createContext } from 'react';
+import { BrowserRouter as Router, Routes, Route, Link, useNavigate, Navigate } from 'react-router-dom';
+import axios from 'axios';
+import { ToastContainer, toast } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
+import Chart from 'chart.js/auto';
+
+function getStatus(price, sma, upper, lower) {
+  if (price < lower) return 'Buy';
+  if (price > upper) return 'Sell';
+  return 'Hold';
+}
+
+const AuthContext = createContext();
+
+function useAuth() {
+  return useContext(AuthContext);
+}
+
+function PrivateRoute({ children }) {
+  const token = localStorage.getItem('token');
+  return token ? children : <Navigate to="/login" />;
+}
+
+// Home Page
+function Home() {
+  return (
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-blue-100 to-white text-center">
+      <h1 className="text-5xl font-bold mb-6 text-blue-900">Welcome to Kalgo</h1>
+      <p className="mb-6 text-lg text-gray-700">Your stock analysis assistant using real-time market data.</p>
+      <Link to="/login">
+        <button className="px-6 py-3 bg-blue-600 text-white font-semibold rounded-xl shadow hover:bg-blue-700">
+          Login to Continue
+        </button>
+      </Link>
+    </div>
+  );
+}
+
+// Login Page
+function Login() {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const navigate = useNavigate();
+
+  const handleLogin = async () => {
+    if (!email || !password) return toast.error("Please fill out all fields.");
+    try {
+      const res = await axios.post('http://localhost:5000/api/login', { email, password });
+      localStorage.setItem('token', res.data.token);
+      toast.success("Login successful");
+      navigate('/stocks');
+    } catch {
+      toast.error("Login failed. Please check your credentials.");
+    }
+  };
+
+  return (
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100">
+      <div className="bg-white p-6 rounded-xl shadow-md w-full max-w-md">
+        <h2 className="text-2xl font-bold mb-4">Login</h2>
+        <input className="w-full p-2 mb-4 border rounded" type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
+        <input className="w-full p-2 mb-4 border rounded" type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} />
+        <button onClick={handleLogin} className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700">Login</button>
+        <p className="mt-4 text-sm">Don’t have an account? <Link to="/register" className="text-blue-600">Register</Link></p>
+      </div>
+      <ToastContainer />
+    </div>
+  );
+}
+
+// Register Page
+function Register() {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const navigate = useNavigate();
+
+  const handleRegister = async () => {
+    if (!email || !password) return toast.error("Please fill out all fields.");
+    try {
+      await axios.post('http://localhost:5000/api/register', { email, password });
+      toast.success("Registration successful. Please log in.");
+      navigate('/login');
+    } catch {
+      toast.error("Registration failed. Try a different email.");
+    }
+  };
+
+  return (
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100">
+      <div className="bg-white p-6 rounded-xl shadow-md w-full max-w-md">
+        <h2 className="text-2xl font-bold mb-4">Register</h2>
+        <input className="w-full p-2 mb-4 border rounded" type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
+        <input className="w-full p-2 mb-4 border rounded" type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} />
+        <button onClick={handleRegister} className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700">Register</button>
+      </div>
+      <ToastContainer />
+    </div>
+  );
+}
+
+// Stocks Page
+function StockAlgo() {
+  const [stocks, setStocks] = useState([]);
+  const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [watchlist, setWatchlist] = useState(() => JSON.parse(localStorage.getItem("watchlist")) || []);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token) return navigate('/login');
+
+    axios.get('http://localhost:5000/api/stocks', {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    .then(res => {
+      setStocks(res.data);
+      setLoading(false);
+    })
+    .catch(() => {
+      localStorage.removeItem('token');
+      navigate('/login');
+    });
+  }, []);
+
+  const toggleWatchlist = (symbol) => {
+    let updated = [...watchlist];
+    if (updated.includes(symbol)) {
+      updated = updated.filter((s) => s !== symbol);
+    } else {
+      updated.push(symbol);
+    }
+    setWatchlist(updated);
+    localStorage.setItem("watchlist", JSON.stringify(updated));
+  };
+
+  const filtered = stocks.filter((s) =>
+    s.symbol.toLowerCase().includes(search.toLowerCase())
+  );
+
+  return (
+    <div className="min-h-screen bg-gray-100 p-6">
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-3xl font-bold">📈 Live Stock Analysis</h2>
+        <button onClick={() => { localStorage.removeItem('token'); navigate('/login'); }} className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600">Logout</button>
+      </div>
+      <input type="text" className="w-full max-w-md mx-auto mb-6 p-2 border rounded-md" placeholder="Search stock..." value={search} onChange={(e) => setSearch(e.target.value)} />
+
+      {loading ? (
+        <p className="text-center">Loading stock data...</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="min-w-full bg-white rounded-xl shadow">
+            <thead className="bg-blue-200 text-left">
+              <tr>
+                <th className="p-3">Symbol</th>
+                <th className="p-3">Price</th>
+                <th className="p-3">SMA</th>
+                <th className="p-3">Upper Band</th>
+                <th className="p-3">Lower Band</th>
+                <th className="p-3">Signal</th>
+                <th className="p-3">★</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((stock) => {
+                const signal = getStatus(stock.price, stock.sma, stock.upper, stock.lower);
+                const color = signal === 'Buy' ? 'bg-green-500' : signal === 'Sell' ? 'bg-red-500' : 'bg-yellow-400';
+                const isFav = watchlist.includes(stock.symbol);
+
+                return (
+                  <tr key={stock.symbol} className="border-t">
+                    <td className="p-3 font-semibold">{stock.symbol}</td>
+                    <td className="p-3">${stock.price.toFixed(2)}</td>
+                    <td className="p-3">${stock.sma.toFixed(2)}</td>
+                    <td className="p-3">${stock.upper.toFixed(2)}</td>
+                    <td className="p-3">${stock.lower.toFixed(2)}</td>
+                    <td className="p-3">
+                      <span className={`px-3 py-1 text-white rounded-full ${color}`}>{signal}</span>
+                    </td>
+                    <td className="p-3">
+                      <button onClick={() => toggleWatchlist(stock.symbol)} className={`text-xl ${isFav ? 'text-yellow-500' : 'text-gray-400'}`}>★</button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <ToastContainer />
+    </div>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthContext.Provider value={{}}>
+      <Router>
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+          <Route path="/stocks" element={<PrivateRoute><StockAlgo /></PrivateRoute>} />
+        </Routes>
+      </Router>
+    </AuthContext.Provider>
+  );
+}
