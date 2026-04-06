@@ -74,6 +74,6 @@ def check_bollinger_signal(symbol, cursor, is_held):
     print(f"{symbol}: Price={current_price:.2f}, SMA={sma:.2f}, Upper={upper:.2f}, Lower={lower:.2f}")
 
     if current_price < lower and not is_held:
-        print(f" Buy signal for {symbol} (Price hit lower band)")
+        print(f" Buy signal for $ {symbol} (Price hit lower band)")
     elif current_price > upper and is_held:
-        print(f" Sell signal for {symbol} (Price hit upper band)")
+        print(f" Sell signal for $ {symbol} (Price hit upper band)")
